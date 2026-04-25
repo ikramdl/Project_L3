@@ -1,0 +1,17 @@
+FILE: routes.py
+ROLE: API Endpoint Controller (The "Intelligence")
+
+EXPLANATION:
+Maps URLs to specific Python functions. This is where the 519 
+data points are processed.
+
+KEY ENDPOINTS:
+- /api/dashboard/stats: Calculates global ASR % and Total Attempts.
+- /api/dashboard/map: Joins Gateways with TrafficStats to provide 
+  coordinates and performance status for the map markers.
+- /api/filters/options: Provides the list of Gateways and Countries 
+  for the dropdown menus in the UI.
+
+LOGIC:
+Implements the 'D-1' rule by automatically fetching the latest 
+available date from the database if no date is specified.

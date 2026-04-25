@@ -1,0 +1,16 @@
+FILES: kpi_engine.py / anomaly_engine.py
+ROLE: Business Logic & Analytics
+
+EXPLANATION:
+These files contain the specialized "Telecom Engineering" math 
+required for the PFE.
+
+- KPI Engine: Defines how ASR, NER, and Congestion are calculated 
+  from raw counters.
+- Anomaly Engine: Defines the "Rules of Detection." It flags a 
+  route as 'Critical' if ASR drops below a certain threshold 
+  relative to the traffic volume.
+
+INTEGRATION:
+The logic from these scripts is being migrated into 'routes.py' 
+to allow the Dashboard to update automatically.

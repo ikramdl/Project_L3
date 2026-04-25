@@ -1,0 +1,13 @@
+FILE: app.py
+ROLE: Central Application Factory & Entry Point
+
+EXPLANATION:
+1. Initializes the Flask Framework.
+2. Enables CORS (Cross-Origin Resource Sharing) so the Frontend (React/Vue) can 
+   access the API without security blocks.
+3. Database Configuration: Connects to the 'Djezzy_Data' PostgreSQL instance.
+4. App Context: Initializes the database (db.init_app) and registers all 
+   API endpoints from 'routes.py'.
+
+EXECUTION:
+Run using 'python app.py' or 'flask run --no-reload'.

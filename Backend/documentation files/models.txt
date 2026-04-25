@@ -1,0 +1,16 @@
+FILE: models.py
+ROLE: Database Schema & Object-Relational Mapping (ORM)
+
+EXPLANATION:
+Defines the structure of the data in Python terms. This matches the 
+pgAdmin4 table headers exactly.
+
+TABLES MAPPED:
+- Gateway: Contains 'id', 'name', and 'x'/'y' (GPS coordinates).
+- TrafficStat: Contains 'date' and telecom KPIs (attempts, answered, 
+  seizure_success, interworking_fail).
+- Destination: Contains 'country' and routing metadata.
+
+LOGIC: 
+Uses SQLAlchemy to allow the backend to query the database using 
+Python objects instead of raw SQL strings.

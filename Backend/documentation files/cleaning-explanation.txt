@@ -1,0 +1,15 @@
+Objective: Transform raw InputInternational.csv (22,317 rows) into a clean, normalized PostgreSQL database.
+
+1. Column Standardization
+Renaming: Changed messy headers like CDGN* to cdgn_ext and N/INT to n_int.
+Formatting: Forced all column names to lowercase and replaced spaces with underscores (_) to avoid SQL syntax errors.
+
+2. The "Virus" Fix (Numeric Cleaning)
+Anomaly: The raw CSV contained -1.0 in many KPI columns (Answer Times, Congestion, etc.).
+Solution: Applied a "Clip & Fill" logic. All negative values were forced to 0, and empty cells were filled with 0.0 to ensure the mathematical Z-Score doesn't crash.
+
+3. Country & Destination RecoveryThis was the biggest task. We solved the "Missing Country" problem using three layers:
+Layer 1 (Standardization): Converted all countries to UPPERCASE (e.g., merging "italy" and "ITALY").
+Layer 2 (Geocoding): Used the reverse_geocoder library. For rows with missing names but valid coordinates ($X, Y$), we automatically injected the correct country name based on the Earth's map.
+Layer 3 (Hard-coded Mapping): For rows with $0,0$ coordinates (like PFX_882 or ASCENSION), we used a lookup dictionary to manually assign names like "International Networks" or "Satellite."
+

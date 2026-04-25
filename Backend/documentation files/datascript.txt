@@ -1,0 +1,12 @@
+FILES: clean_data.py / import_to_db.py
+ROLE: Data Pipeline (ETL)
+
+EXPLANATION:
+- clean_data.py: Scrubs the raw 'InputInternational.csv' file to 
+  remove duplicates and fix date formats.
+- import_to_db.py: Uses a script to automate the loading of 
+  cleaned CSV rows into the PostgreSQL tables.
+
+STATUS:
+Only needs to be run when new D-1 data is received from the 
+network logs.
