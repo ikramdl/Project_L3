@@ -1,35 +1,91 @@
 import requests
 
 BASE_URL = "http://127.0.0.1:5000/api"
-def test_route(endpoint, params=None):
+
+
+def test_route(label, endpoint, params=None):
     url = f"{BASE_URL}{endpoint}"
     try:
-        print(f"Testing {url}...", end=" ")
-        response = requests.get(url, params=params)
-        if response.status_code == 200:
-            data = response.json()
-            # Check if we actually got data or just an empty list
-            count = len(data) if isinstance(data, list) else "1 object"
-            print(f"✅ SUCCESS ({count} items found)")
+        print(f"  {label:<40}", end=" ")
+        r = requests.get(url, params=params)
+        if r.status_code == 200:
+            data = r.json()
+            if isinstance(data, list):
+                count = f"{len(data)} items"
+            elif isinstance(data, dict):
+                if 'flows' in data:
+                    count = f"{len(data['flows'])} flows, {len(data['gateways'])} gateways"
+                else:
+                    count = "1 object"
+            else:
+                count = "?"
+            print(f"✅ {count}")
         else:
-            print(f"❌ FAILED (Status: {response.status_code})")
+            print(f"❌ Status {r.status_code}")
     except Exception as e:
-        print(f"🔥 ERROR: Could not connect to server. Is Flask running?")
+        print(f"🔥 {e}")
+
 
 if __name__ == "__main__":
-    print("--- 🔍 PFE BACKEND SYSTEM TEST 🔍 ---\n")
+    print("\n--- 🔍 BACKEND FILTER TEST 🔍 ---\n")
+
+    print("[1] No filters (baseline)")
+    test_route("stats",          "/dashboard/stats")
+    test_route("map",            "/dashboard/map")
+    test_route("active-routes",  "/dashboard/active-routes")
+    test_route("chronic-issues", "/dashboard/chronic-issues")
+    test_route("filters/options","/filters/options")
+
+    print("\n[2] Filter by country=MOROCCO")
+    test_route("stats",          "/dashboard/stats",          {"country": "MOROCCO"})
+    test_route("map",            "/dashboard/map",            {"country": "MOROCCO"})
+    test_route("active-routes",  "/dashboard/active-routes",  {"country": "MOROCCO"})
+    test_route("chronic-issues", "/dashboard/chronic-issues", {"country": "MOROCCO"})
+
+    print("\n[3] Filter by type=INTERNATIONAL")
+    test_route("stats",          "/dashboard/stats",          {"type": "INTERNATIONAL"})
+    test_route("map",            "/dashboard/map",            {"type": "INTERNATIONAL"})
+    test_route("active-routes",  "/dashboard/active-routes",  {"type": "INTERNATIONAL"})
+    test_route("chronic-issues", "/dashboard/chronic-issues", {"type": "INTERNATIONAL"})
+
+    print("\n[4] Filter by severity=Critical")
+    test_route("map",            "/dashboard/map",            {"severity": "Critical"})
+    test_route("chronic-issues", "/dashboard/chronic-issues", {"severity": "Critical"})
+
+    print("\n[5] Combined filters")
+    test_route("map (MOROCCO+INTL+Critical)", "/dashboard/map",
+               {"country": "MOROCCO", "type": "INTERNATIONAL", "severity": "Critical"})
+
+    print("\n[6] Router details endpoint")
+    GW_ID = 3   # 👈 replace with the ID you noted from Step 1
+    test_route("router-details (no filter)", "/dashboard/router-details",
+               {"gateway_id": GW_ID})
+    test_route("router-details + country",   "/dashboard/router-details",
+               {"gateway_id": GW_ID, "country": "MOROCCO"})
+    test_route("router-details + type",      "/dashboard/router-details",
+               {"gateway_id": GW_ID, "type": "INTERNATIONAL"})
+    test_route("router-details (missing id)","/dashboard/router-details")
+    test_route("router-details (bad id)",    "/dashboard/router-details",
+               {"gateway_id": 999999})
     
-    # 1. Test General Dashboard
-    test_route("/dashboard/stats")
+
+    print("\n[7] Country details endpoint")
+    test_route("country-details (MOROCCO)",  "/dashboard/country-details",
+               {"country": "MOROCCO"})
+    test_route("country-details + type",     "/dashboard/country-details",
+               {"country": "MOROCCO", "type": "INTERNATIONAL"})
+    test_route("country-details (lowercase)","/dashboard/country-details",
+               {"country": "morocco"})
+    test_route("country-details (missing)",  "/dashboard/country-details")
+    test_route("country-details (typo)",     "/dashboard/country-details",
+               {"country": "MOROCO"})
     
-    # 2. Test Filtering (Simulating a user selection)
-    test_route("/dashboard/map", params={"type": "INTERNATIONAL", "severity": "Critical"})
-    
-    # 3. Test Global State Panels
-    test_route("/dashboard/active-routes")
-    test_route("/dashboard/chronic-issues")
-    
-    # 4. Test Dropdowns
-    test_route("/filters/options")
-    
-    print("\n--- TEST COMPLETE ---")
+
+    print("\n[8] Map upgrade — flows + normalization")
+    test_route("map (default limit)",   "/dashboard/map")
+    test_route("map limit=20",          "/dashboard/map", {"limit": 20})
+    test_route("map limit=5",           "/dashboard/map", {"limit": 5})
+    test_route("map + severity=Critical","/dashboard/map", {"severity": "Critical"})
+    test_route("map + country=MOROCCO", "/dashboard/map", {"country": "MOROCCO"})
+
+    print("\n--- TEST COMPLETE ---\n")

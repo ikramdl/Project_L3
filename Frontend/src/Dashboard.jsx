@@ -24,9 +24,8 @@ const Dashboard = () => {
     axios.get(`${API_BASE}/dashboard/active-routes`).then(res => setActiveRoutes(res.data)).catch(e => console.error("Routes Error"));
 
     // 4. Fetch the 519 Map Gateways
-    axios.get(`${API_BASE}/dashboard/map`).then(res => setMapPoints(res.data)).catch(e => console.error("Map Error"));
+    axios.get(`${API_BASE}/dashboard/map`).then(res => setMapPoints(res.data.gateways)).catch(e => console.error("Map Error"));
   }, []);
-
   return (
     <div style={{ backgroundColor: '#0f172a', minHeight: '100vh', color: 'white', padding: '24px', fontFamily: 'sans-serif' }}>
       
