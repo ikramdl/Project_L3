@@ -88,4 +88,25 @@ if __name__ == "__main__":
     test_route("map + severity=Critical","/dashboard/map", {"severity": "Critical"})
     test_route("map + country=MOROCCO", "/dashboard/map", {"country": "MOROCCO"})
 
+
+
+    print("\n[9] Time-series helper integration")
+    import requests as _r
+
+    r = _r.get(f"{BASE_URL}/dashboard/router-details", params={"gateway_id": 3})
+    if r.status_code == 200:
+        ts = r.json().get('timeseries', [])
+        keys_ok = ts and all(k in ts[0] for k in ('time', 'asr', 'traffic', 'congestion'))
+        print(f"  router-details timeseries shape:        {'✅' if keys_ok else '❌'} ({len(ts)} points)")
+    else:
+        print(f"  router-details                           ❌ {r.status_code}")
+
+    r = _r.get(f"{BASE_URL}/dashboard/country-details", params={"country": "MOROCCO"})
+    if r.status_code == 200:
+        ts = r.json().get('timeseries', [])
+        keys_ok = ts and all(k in ts[0] for k in ('time', 'asr', 'traffic', 'congestion'))
+        print(f"  country-details timeseries shape:       {'✅' if keys_ok else '❌'} ({len(ts)} points)")
+    else:
+        print(f"  country-details                          ❌ {r.status_code}")
+
     print("\n--- TEST COMPLETE ---\n")

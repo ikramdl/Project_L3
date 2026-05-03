@@ -44,8 +44,10 @@ class Anomaly(db.Model):
     dest_id = db.Column(db.Integer, db.ForeignKey('destinations.id'))
     kpi_name = db.Column(db.String(50))
     value = db.Column(db.Float)
-    z_score = db.Column(db.Float)  # <--- CRITICAL: Added for your Z-score logic
+    z_score = db.Column(db.Float)
     severity = db.Column(db.String(20))
+    reason = db.Column(db.String(50))           
+    explanation = db.Column(db.String(255))     
     
     gateway = db.relationship('Gateway', backref='anomalies')
     destination = db.relationship('Destination', backref='anomalies')

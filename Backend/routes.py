@@ -4,6 +4,7 @@ from models import Gateway, Destination, Anomaly, TrafficStat
 from sqlalchemy import func, and_
 from datetime import datetime, timedelta
 import math
+from analytics import compute_timeseries
 
 def get_latest_date():
     """Auto-pick the most recent date in traffic_stats (D-1 logic)."""
@@ -336,6 +337,8 @@ def get_chronic_issues():
         Anomaly.value,
         Anomaly.z_score,
         Anomaly.severity,
+        Anomaly.reason,           
+        Anomaly.explanation,       
         Gateway.name.label('gateway_name'),
         Destination.country.label('country'),
         Destination.dest_type.label('type')
@@ -365,6 +368,8 @@ def get_chronic_issues():
             "value": round(float(r.value), 2) if r.value is not None else None,
             "z_score": round(float(r.z_score), 2) if r.z_score is not None else None,
             "severity": r.severity,
+            "reason": r.reason,             
+            "explanation": r.explanation,   
             "date": str(r.date) if r.date else None
         }
         for r in rows
@@ -462,38 +467,14 @@ def get_router_details():
     }
 
     # ----- 3. Time-series: last 30 days ending at f['date'] -----
-    try:
-        end_date = datetime.strptime(f['date'], "%Y-%m-%d").date()
-    except (ValueError, TypeError):
-        end_date = datetime.utcnow().date()
-    start_date = end_date - timedelta(days=29)
+    timeseries = compute_timeseries(
+        end_date=f['date'],
+        days=30,
+        gateway_id=gateway_id,
+        country=f['country'],
+        type_=f['type']
+    )
 
-    ts_q = db.session.query(
-        TrafficStat.date.label('date'),
-        func.sum(TrafficStat.call_attempts).label('attempts'),
-        func.sum(TrafficStat.answered_calls).label('answered')
-    ).filter(TrafficStat.gateway_id == gateway_id)\
-     .filter(TrafficStat.date >= start_date)\
-     .filter(TrafficStat.date <= end_date)
-
-    if f['country'] or f['type']:
-        ts_q = ts_q.join(Destination, Destination.id == TrafficStat.dest_id)
-        if f['country']:
-            ts_q = ts_q.filter(Destination.country == f['country'])
-        if f['type']:
-            ts_q = ts_q.filter(Destination.dest_type == f['type'])
-
-    ts_rows = ts_q.group_by(TrafficStat.date).order_by(TrafficStat.date).all()
-
-    timeseries = []
-    for r in ts_rows:
-        a = int(r.attempts or 0)
-        ans = int(r.answered or 0)
-        timeseries.append({
-            "date": str(r.date),
-            "volume": a,
-            "asr": round((ans / a * 100), 2) if a > 0 else 0.0
-        })
 
     # ----- 4. Failure distribution -----
     failure_buckets = [
@@ -522,6 +503,8 @@ def get_router_details():
         Anomaly.value,
         Anomaly.z_score,
         Anomaly.severity,
+        Anomaly.reason,           
+        Anomaly.explanation,  
         Destination.country.label('country')
     ).join(Destination, Anomaly.dest_id == Destination.id)\
      .filter(Anomaly.gateway_id == gateway_id)
@@ -540,7 +523,9 @@ def get_router_details():
             "kpi_name": a.kpi_name,
             "value": round(float(a.value), 2) if a.value is not None else None,
             "z_score": round(float(a.z_score), 2) if a.z_score is not None else None,
-            "severity": a.severity
+            "severity": a.severity,
+            "reason": a.reason,
+            "explanation": a.explanation
         }
         for a in anom_rows
     ]
@@ -655,37 +640,13 @@ def get_country_details():
             "asr": round((a / v * 100), 2) if v > 0 else 0.0
         })
 
-    # ----- 4. Time-series: last 30 days ending at f['date'] -----
-    try:
-        end_date = datetime.strptime(f['date'], "%Y-%m-%d").date()
-    except (ValueError, TypeError):
-        end_date = datetime.utcnow().date()
-    start_date = end_date - timedelta(days=29)
-
-    ts_q = db.session.query(
-        TrafficStat.date.label('date'),
-        func.sum(TrafficStat.call_attempts).label('attempts'),
-        func.sum(TrafficStat.answered_calls).label('answered')
-    ).join(Destination, Destination.id == TrafficStat.dest_id)\
-     .filter(Destination.country == country_raw)\
-     .filter(TrafficStat.date >= start_date)\
-     .filter(TrafficStat.date <= end_date)
-
-    if f['type']:
-        ts_q = ts_q.filter(Destination.dest_type == f['type'])
-
-    ts_rows = ts_q.group_by(TrafficStat.date)\
-                  .order_by(TrafficStat.date).all()
-
-    timeseries = []
-    for r in ts_rows:
-        a = int(r.attempts or 0)
-        ans = int(r.answered or 0)
-        timeseries.append({
-            "date": str(r.date),
-            "volume": a,
-            "asr": round((ans / a * 100), 2) if a > 0 else 0.0
-        })
+   # ----- 4. Time-series: last 30 days ending at f['date'] -----
+    timeseries = compute_timeseries(
+        end_date=f['date'],
+        days=30,
+        country=country_raw,
+        type_=f['type']
+    )
 
     # ----- 5. Failure distribution -----
     failure_buckets = [
@@ -723,6 +684,8 @@ def get_country_details():
         Anomaly.value,
         Anomaly.z_score,
         Anomaly.severity,
+         Anomaly.reason,            
+        Anomaly.explanation,
         Gateway.name.label('gateway_name')
     ).join(Gateway, Anomaly.gateway_id == Gateway.id)\
      .join(Destination, Anomaly.dest_id == Destination.id)\
@@ -744,7 +707,9 @@ def get_country_details():
                 "kpi_name": a.kpi_name,
                 "value": round(float(a.value), 2) if a.value is not None else None,
                 "z_score": round(float(a.z_score), 2) if a.z_score is not None else None,
-                "severity": a.severity
+                "severity": a.severity,
+                "reason": a.reason,             
+                "explanation": a.explanation
             }
             for a in recent_rows
         ]
