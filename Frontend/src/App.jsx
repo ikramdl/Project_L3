@@ -1,10 +1,13 @@
 import Dashboard from './Dashboard';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function App() {
   return (
-    <div className="min-h-screen bg-gray-100">
-      <Dashboard />
-    </div>
+    <ErrorBoundary>
+      <div className="min-h-screen bg-gray-100">
+        <Dashboard />
+      </div>
+    </ErrorBoundary>
   );
 }
 

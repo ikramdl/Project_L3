@@ -1,11 +1,17 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
+import React, { useEffect, useState, useMemo } from 'react';import axios from 'axios';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { AlertTriangle, Activity, Globe, PhoneCall } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import FilterBar from './components/FilterBar';
 import AnalyticsPanel from './components/AnalyticsPanel';
+import FlowLayer from './components/FlowLayer';
+import FlowControls from './components/FlowControls';
+import Alerts from './components/Alerts';
+import ComparisonPanel from './components/ComparisonPanel';
+import { GitCompare } from 'lucide-react';
+import MapMarkers from './components/MapMarkers';
+import EngineeringKPIs from './components/EngineeringKPIs';
 
 const API_BASE = "http://127.0.0.1:5000/api";
 
@@ -22,43 +28,91 @@ const Dashboard = () => {
   const [activeRoutes, setActiveRoutes] = useState([]);
   const [mapPoints, setMapPoints] = useState([]);
   const [selectedTarget, setSelectedTarget] = useState(null);
+  const [flows, setFlows] = useState([]);
+  const [showFlows, setShowFlows] = useState(false);
+  const [flowSeverity, setFlowSeverity] = useState('All');
+  const visibleFlows = useMemo(() => {
+    if (flowSeverity === 'All') return flows;
+    return flows.filter(f => f.severity === flowSeverity);
+  }, [flows, flowSeverity]);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [destinations, setDestinations] = useState([]);
+  const [loading, setLoading] = useState(true);
+
 
   // Refetch all data whenever filters change
-  useEffect(() => {
-    // Skip the very first render where filters.date is empty (FilterBar will set it once options load)
-    if (!filters.date) return;
+ const fetchAll = () => {
+  if (!filters.date) return;
+  const params = filters;
+  setLoading(true);
 
-    const params = filters;
+  Promise.all([
+    axios.get(`${API_BASE}/dashboard/stats`, { params }).then(r => setStats(r.data)),
+    axios.get(`${API_BASE}/dashboard/chronic-issues`, { params }).then(r => setAnomalies(r.data)),
+    axios.get(`${API_BASE}/dashboard/active-routes`, { params }).then(r => setActiveRoutes(r.data)),
+    axios.get(`${API_BASE}/dashboard/map`, { params }).then(r => {
+      setMapPoints(r.data.gateways || []);
+      setFlows(r.data.flows || []);
+      setDestinations(r.data.destinations || []);
+    })
+  ])
+    .catch(e => console.error("Fetch error:", e))
+    .finally(() => setLoading(false));
+};
 
-    axios.get(`${API_BASE}/dashboard/stats`, { params })
-      .then(res => setStats(res.data))
-      .catch(e => console.error("Stats Error", e));
-
-    axios.get(`${API_BASE}/dashboard/chronic-issues`, { params })
-      .then(res => setAnomalies(res.data))
-      .catch(e => console.error("Anomalies Error", e));
-
-    axios.get(`${API_BASE}/dashboard/active-routes`, { params })
-      .then(res => setActiveRoutes(res.data))
-      .catch(e => console.error("Routes Error", e));
-
-    axios.get(`${API_BASE}/dashboard/map`, { params })
-      .then(res => setMapPoints(res.data.gateways || []))
-      .catch(e => console.error("Map Error", e));
-  }, [filters]);
+useEffect(() => {
+  const timer = setTimeout(() => {
+    fetchAll();
+  }, 250);  // wait 250ms before firing
+  return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [filters]);
+  
 
   return (
     <div style={{ backgroundColor: '#0f172a', minHeight: '100vh', color: 'white', padding: '24px', fontFamily: 'sans-serif' }}>
 
+    {loading && (
+      <div style={{
+        position: 'fixed',
+        top: 0, left: 0, right: 0,
+        height: '3px',
+        background: 'linear-gradient(90deg, transparent, #3b82f6, transparent)',
+        backgroundSize: '200% 100%',
+        animation: 'loading-bar 1.2s linear infinite',
+        zIndex: 9999
+      }} />
+    )}
+
       {/* HEADER */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '26px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <Activity color="#ef4444" /> DJEZZY NETWORK OPS
-        </h1>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+      <h1 style={{ fontSize: '26px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <Activity color="#ef4444" /> DJEZZY NETWORK OPS
+      </h1>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <button
+          onClick={() => setCompareOpen(true)}
+          style={{
+            background: '#1e293b',
+            border: '1px solid #334155',
+            color: 'white',
+            padding: '8px 14px',
+            borderRadius: '20px',
+            fontSize: '12px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}
+        >
+          <GitCompare size={14} /> COMPARE
+        </button>
         <div style={{ background: '#7f1d1d', color: '#fecaca', padding: '6px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold' }}>
           D-1 MONITORING
         </div>
-      </div>
+<Alerts anomalies={anomalies} onRefresh={fetchAll} />      </div>
+    </div>
 
       {/* FILTER BAR */}
       <FilterBar filters={filters} onChange={setFilters} />
@@ -94,9 +148,19 @@ const Dashboard = () => {
           <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#f59e0b' }}>{stats.congestion_index}%</div>
         </div>
       </div>
+      <EngineeringKPIs stats={stats} />
+
 
       {/* MAP */}
-      <div style={{ background: '#1e293b', borderRadius: '16px', padding: '10px', marginBottom: '24px' }}>
+      <div style={{ background: '#1e293b', borderRadius: '16px', padding: '10px', marginBottom: '24px', position: 'relative' }}>
+        <FlowControls
+          show={showFlows}
+          severity={flowSeverity}
+          flowCount={visibleFlows.length}
+          totalFlows={flows.length}
+          onToggle={setShowFlows}
+          onSeverity={setFlowSeverity}
+        />
         <div style={{ height: '550px', width: '100%', borderRadius: '12px', overflow: 'hidden' }}>
           <MapContainer
             center={[36.75, 3.05]}
@@ -109,22 +173,13 @@ const Dashboard = () => {
               noWrap={true}
               attribution='&copy; OpenStreetMap'
             />
-            {mapPoints.map((point, idx) => (
-              <Marker
-                key={idx}
-                position={[point.lat || 36.75, point.lng || 3.05]}
-                eventHandlers={{
-                  click: () => setSelectedTarget({ type: 'router', id: point.id })
-                }}
-              >
-                <Popup>
-                  <div style={{ color: '#000' }}>
-                    <strong>{point.gateway_name}</strong><br/>
-                    <span style={{ fontSize: '11px', color: '#64748b' }}>Click marker for details</span>
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
+            {showFlows && <FlowLayer flows={visibleFlows} />}
+            <MapMarkers
+              gateways={mapPoints}
+              destinations={destinations}
+              onSelectGateway={(g) => setSelectedTarget({ type: 'router', id: g.id })}
+              onSelectCountry={(country) => setSelectedTarget({ type: 'country', value: country })}
+            />
           </MapContainer>
         </div>
       </div>
@@ -188,6 +243,13 @@ const Dashboard = () => {
         target={selectedTarget}
         filters={filters}
         onClose={() => setSelectedTarget(null)}
+      />
+
+      <ComparisonPanel
+        open={compareOpen}
+        onClose={() => setCompareOpen(false)}
+        defaultDate={filters.date}
+        defaultCountry={filters.country}
       />
     </div>
   );

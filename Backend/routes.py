@@ -51,40 +51,56 @@ def apply_traffic_filters(query, f, joined_destination=False):
 @app.route('/api/dashboard/stats', methods=['GET'])
 def get_global_stats():
     """
-    Network-wide KPI aggregates.
-    Filters: date, country, type
+    Network-wide KPI aggregates — the full 10-KPI engine.
     """
     f = parse_filters()
 
     q = db.session.query(
-        func.sum(TrafficStat.call_attempts).label('total_attempts'),
-        func.sum(TrafficStat.answered_calls).label('total_answered'),
-        func.sum(TrafficStat.interworking_fail).label('total_fail'),
-        func.sum(TrafficStat.seizure_traffic).label('total_seizure'),
-        func.sum(TrafficStat.connected_traffic).label('total_connected'),
-        func.sum(TrafficStat.congestion_times).label('total_congestion')
+        func.sum(TrafficStat.call_attempts).label('attempts'),
+        func.sum(TrafficStat.answered_calls).label('answered'),
+        func.sum(TrafficStat.interworking_fail).label('interworking'),
+        func.sum(TrafficStat.seizure_traffic).label('seizure'),
+        func.sum(TrafficStat.connected_traffic).label('connected'),
+        func.sum(TrafficStat.congestion_times).label('congestion'),
+        func.sum(TrafficStat.paging_no_response).label('paging'),
+        func.sum(TrafficStat.route_overflow).label('overflow'),
+        func.sum(TrafficStat.user_busy).label('user_busy'),
+        func.sum(TrafficStat.absent_subscriber).label('absent')
     )
     q = apply_traffic_filters(q, f)
-    stats = q.first()
+    s = q.first()
 
-    attempts   = stats.total_attempts   or 0
-    answered   = stats.total_answered   or 0
-    seizure    = stats.total_seizure    or 0
-    connected  = stats.total_connected  or 0
-    congestion = stats.total_congestion or 0
+    attempts    = s.attempts    or 0
+    answered    = s.answered    or 0
+    seizure     = s.seizure     or 0
+    connected   = s.connected   or 0
+    congestion  = s.congestion  or 0
+    paging      = s.paging      or 0
+    overflow    = s.overflow    or 0
+    user_busy   = s.user_busy   or 0
+    absent      = s.absent      or 0
+    interworking= s.interworking or 0
 
-    asr = (answered  / attempts * 100) if attempts > 0 else 0
-    ner = (connected / seizure  * 100) if seizure  > 0 else 0
-    congestion_index = (congestion / attempts * 100) if attempts > 0 else 0
+    def pct(num, den):
+        return round((num / den * 100), 2) if den > 0 else 0.0
 
     return jsonify({
         "date": f['date'],
         "filters_applied": {k: v for k, v in f.items() if v and k != 'date'},
+        # Existing KPIs (do not break frontend)
         "total_attempts": int(attempts),
-        "asr": round(float(asr), 2),
-        "ner": round(float(ner), 2),
-        "congestion_index": round(float(congestion_index), 2),
-        "failures": int(stats.total_fail or 0)
+        "asr": pct(answered, attempts),
+        "ner": pct(connected, seizure),
+        "congestion_index": pct(congestion, attempts),
+        "failures": int(interworking),
+        # The remaining 7 from your KPI engine
+        "psr":                    round(100 - pct(paging, attempts), 2),
+        "route_overflow_pct":     pct(overflow, attempts),
+        "interworking_failure":   pct(interworking, attempts),
+        "user_behavior_failure":  pct(user_busy, attempts),
+        "reachability":           round(100 - pct(absent, attempts), 2),
+        "seizure_success":        pct(seizure, attempts),
+        "traffic_load":           int(attempts)
     })
 
 
@@ -726,4 +742,91 @@ def get_country_details():
         "timeseries": timeseries,
         "failures": failures,
         "anomaly_summary": anomaly_summary
+    })
+
+    # ============================================================
+# 8. COMPARE — country vs country OR date vs date
+# ============================================================
+@app.route('/api/dashboard/compare', methods=['GET'])
+def get_comparison():
+    """
+    Compare two scopes side-by-side.
+    Required: country_1, date_1, date_2
+    Optional: country_2 (defaults to country_1 → date-vs-date mode)
+    Returns: { side_1, side_2, differences }
+    """
+    country_1 = (request.args.get('country_1') or '').strip().upper()
+    country_2 = (request.args.get('country_2') or '').strip().upper() or country_1
+    date_1 = request.args.get('date_1')
+    date_2 = request.args.get('date_2')
+
+    if not country_1:
+        return jsonify({"error": "country_1 is required"}), 400
+    if not date_1 or not date_2:
+        return jsonify({"error": "date_1 and date_2 are required"}), 400
+
+    # Validate countries exist
+    for c in {country_1, country_2}:
+        exists = db.session.query(Destination.id)\
+            .filter(Destination.country == c).first()
+        if not exists:
+            return jsonify({"error": f"country '{c}' not found"}), 404
+
+    def compute_side(country, date):
+        """Run the same KPI aggregation as /dashboard/stats but scoped to country+date."""
+        q = db.session.query(
+            func.sum(TrafficStat.call_attempts).label('attempts'),
+            func.sum(TrafficStat.answered_calls).label('answered'),
+            func.sum(TrafficStat.seizure_traffic).label('seizure'),
+            func.sum(TrafficStat.connected_traffic).label('connected'),
+            func.sum(TrafficStat.congestion_times).label('congestion')
+        ).join(Destination, Destination.id == TrafficStat.dest_id)\
+         .filter(TrafficStat.date == date)\
+         .filter(Destination.country == country)
+
+        t = q.first()
+        attempts   = int(t.attempts   or 0)
+        answered   = int(t.answered   or 0)
+        seizure    = float(t.seizure  or 0)
+        connected  = float(t.connected or 0)
+        congestion = int(t.congestion or 0)
+
+        asr = round((answered  / attempts * 100), 2) if attempts > 0 else 0.0
+        ner = round((connected / seizure  * 100), 2) if seizure  > 0 else 0.0
+        cgi = round((congestion / attempts * 100), 2) if attempts > 0 else 0.0
+
+        return {
+            "country": country,
+            "date": date,
+            "kpis": {"asr": asr, "ner": ner, "congestion_index": cgi},
+            "totals": {
+                "call_attempts": attempts,
+                "answered_calls": answered
+            }
+        }
+
+    side_1 = compute_side(country_1, date_1)
+    side_2 = compute_side(country_2, date_2)
+
+    # ----- Differences (side_2 - side_1) -----
+    def pct_change(a, b):
+        """Relative % change for raw counts."""
+        if a == 0:
+            return 0.0 if b == 0 else 100.0
+        return round((b - a) / a * 100, 2)
+
+    differences = {
+        # KPIs as absolute percentage-point deltas (the right metric for percentages)
+        "asr_pp": round(side_2['kpis']['asr'] - side_1['kpis']['asr'], 2),
+        "ner_pp": round(side_2['kpis']['ner'] - side_1['kpis']['ner'], 2),
+        "congestion_index_pp": round(side_2['kpis']['congestion_index'] - side_1['kpis']['congestion_index'], 2),
+        # Volume as relative percent change
+        "call_attempts_pct": pct_change(side_1['totals']['call_attempts'], side_2['totals']['call_attempts']),
+        "answered_calls_pct": pct_change(side_1['totals']['answered_calls'], side_2['totals']['answered_calls'])
+    }
+
+    return jsonify({
+        "side_1": side_1,
+        "side_2": side_2,
+        "differences": differences
     })
